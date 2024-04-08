@@ -13,6 +13,78 @@ class CognitoController extends Controller
 
     /**
      * @param Request $request
+     * @return JsonResponse
+     */
+    public function createPool(Request $request): JsonResponse
+    {
+        $storeName = $request->get('storeName', null);
+        $storeId = $request->get('storeId', null);
+
+        $headers = $request->headers;
+        $awsAccessKey = $headers->get('aws_access_key');
+        $awsSecretAccessKey = $headers->get('aws_secret_access_key');
+        if (empty($storeName) || empty($storeId)) {
+            return $this->output('Invalid request data.', [], ResponseAlias::HTTP_BAD_REQUEST);
+        }
+
+        $client = $this->cognitoService->connectCognito($awsAccessKey, $awsSecretAccessKey);
+
+        try {
+            $result = $client->createUserPool([
+                'PoolName' => $storeName . '_' . $storeId,
+                'AdminCreateUserConfig' => [
+                    'AllowAdminCreateUserOnly' => true,
+                ],
+                'Policies' => [
+                    'PasswordPolicy' => [
+                        'MinimumLength' => 8,
+                    ],
+                ],
+                'Schema' => [
+                    [
+                        'AttributeDataType' => 'String',
+                        'Mutable' => true,
+                        'Name' => 'store_name',
+                        'Required' => true,
+                    ],
+                ],
+                "UsernameConfiguration" => [
+                    "CaseSensitive" => false
+                ],
+                "UsernameAttributes" => ["email"],
+            ]);
+
+            $userPoolId = $result['UserPool']['Id'];
+
+            $result = $client->createUserPoolClient([
+                'ClientName' => 'client-' . $storeId . '-' . $storeName,
+                'UserPoolId' => $userPoolId,
+                'ExplicitAuthFlows' => [
+                    'ALLOW_REFRESH_TOKEN_AUTH',
+                    'ALLOW_ADMIN_USER_PASSWORD_AUTH',
+                    'ALLOW_CUSTOM_AUTH',
+                    'ALLOW_REFRESH_TOKEN_AUTH',
+                    'ALLOW_USER_SRP_AUTH'
+                ],
+                'GenerateSecret' => false,
+                'RefreshTokenValidity' => 30,
+                'PreventUserExistenceErrors' => 'ENABLED'
+            ]);
+
+            $clientId = $result['UserPoolClient']['ClientId'];
+
+            return $this->output('Pool and Client ID created.', [
+                'poolId' => $userPoolId,
+                'clientId' => $clientId
+            ]);
+
+        } catch (CognitoIdentityProviderException $exception) {
+            return $this->output('Pool create request failed.', $exception->getMessage(), ResponseAlias::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * @param Request $request
      * @return JsonResponse|\Exception|array
      */
     public function login(Request $request): JsonResponse|\Exception|array
@@ -57,8 +129,8 @@ class CognitoController extends Controller
 
         $cognitoSubIndex = array_search("sub", array_column($cognitoResponse->get('User')["Attributes"], "Name"));
         $newUser = [
-            'name'       => $name,
-            'email'      => $email,
+            'name' => $name,
+            'email' => $email,
             'cognito_username' => $cognitoResponse->get('User')['Username'],
             'cognito_id' => $cognitoResponse->get('User')['Attributes'][$cognitoSubIndex]['Value']
         ];
