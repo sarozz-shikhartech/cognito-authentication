@@ -10,13 +10,13 @@ use Illuminate\Support\Str;
 class CognitoService extends MainService
 {
 
-    public function connectCognito($accessKey, $secretAccessKey): CognitoIdentityProviderClient|\Exception|CognitoIdentityProviderException
+    public function connectCognito(): CognitoIdentityProviderClient|\Exception|CognitoIdentityProviderException
     {
         try {
             return new CognitoIdentityProviderClient([
                 'version'     => 'latest',
                 'region'      => 'us-west-1',
-                'credentials' => new Credentials($accessKey, $secretAccessKey)
+                'credentials' => new Credentials(env('AWS_ACCESS_KEY'), env('AWS_SECRET_KEY'))
             ]);
 
         } catch (CognitoIdentityProviderException $exception) {
@@ -31,12 +31,10 @@ class CognitoService extends MainService
             $password = $request->password;
 
             $headers = $request->headers;
-            $awsAccessKey = $headers->get('aws_access_key');
-            $awsSecretAccessKey = $headers->get('aws_secret_access_key');
             $awsCognitoPoolId = $headers->get('aws_cognito_pool_id');
             $awsClientId = $headers->get('aws_client_id');
 
-            $client = $this->connectCognito($awsAccessKey, $awsSecretAccessKey);
+            $client = $this->connectCognito();
 
             $response = $client->adminInitiateAuth([
                 'AuthFlow' => 'ADMIN_NO_SRP_AUTH',
@@ -76,11 +74,9 @@ class CognitoService extends MainService
             $email_verified = $request->email_verified ?? "false";
 
             $headers = $request->headers;
-            $awsAccessKey = $headers->get('aws_access_key');
-            $awsSecretAccessKey = $headers->get('aws_secret_access_key');
             $awsCognitoPoolId = $headers->get('aws_cognito_pool_id');
 
-            $client = $this->connectCognito($awsAccessKey, $awsSecretAccessKey);
+            $client = $this->connectCognito();
 
             return $client->adminCreateUser([
                 "DesiredDeliveryMediums" => ["EMAIL"],
@@ -106,12 +102,7 @@ class CognitoService extends MainService
             $currentPassword = $request->current_password;
             $newPassword = $request->new_password;
 
-            $headers = $request->headers;
-            $awsAccessKey = $headers->get('aws_access_key');
-            $awsSecretAccessKey = $headers->get('aws_secret_access_key');
-            $awsCognitoPoolId = $headers->get('aws_cognito_pool_id');
-
-            $client = $this->connectCognito($awsAccessKey, $awsSecretAccessKey);
+            $client = $this->connectCognito();
 
             $payload = [
                 'AuthFlow' => 'ADMIN_NO_SRP_AUTH',
@@ -144,11 +135,9 @@ class CognitoService extends MainService
     {
         try {
             $headers = $request->headers;
-            $awsAccessKey = $headers->get('aws_access_key');
-            $awsSecretAccessKey = $headers->get('aws_secret_access_key');
             $awsClientId = $headers->get('aws_client_id');
 
-            $client = $this->connectCognito($awsAccessKey, $awsSecretAccessKey);
+            $client = $this->connectCognito();
             $params = [
                 "ClientId" => $awsClientId,
                 "Username" => $request->email,
@@ -162,10 +151,10 @@ class CognitoService extends MainService
         }
     }
 
-    public function processCognitoForcePasswordChange($awsAccessKey, $awsSecretAccessKey, $params = [])
+    public function processCognitoForcePasswordChange($params = [])
     {
         try {
-            $client = $this->connectCognito($awsAccessKey, $awsSecretAccessKey);
+            $client = $this->connectCognito();
 
             $response = $client->respondToAuthChallenge($params);
             $response = $response->toArray();
@@ -188,11 +177,9 @@ class CognitoService extends MainService
     {
         try {
             $headers = $request->headers;
-            $awsAccessKey = $headers->get('aws_access_key');
-            $awsSecretAccessKey = $headers->get('aws_secret_access_key');
             $awsClientId = $headers->get('aws_client_id');
 
-            $client = $this->connectCognito($awsAccessKey, $awsSecretAccessKey);
+            $client = $this->connectCognito();
 
             $params = [
                 'ClientId' => $awsClientId,

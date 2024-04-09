@@ -20,18 +20,14 @@ class CognitoController extends Controller
         $storeName = $request->get('storeName', null);
         $storeId = $request->get('storeId', null);
 
-        $headers = $request->headers;
-        $awsAccessKey = $headers->get('aws_access_key');
-        $awsSecretAccessKey = $headers->get('aws_secret_access_key');
         if (empty($storeName) || empty($storeId)) {
             return $this->output('Invalid request data.', [], ResponseAlias::HTTP_BAD_REQUEST);
         }
 
-        $client = $this->cognitoService->connectCognito($awsAccessKey, $awsSecretAccessKey);
-
         try {
+            $client = $this->cognitoService->connectCognito();
             $result = $client->createUserPool([
-                'PoolName' => $storeName . '_' . $storeId,
+                'PoolName' => 'pool-'. $storeId . '-' . $storeName,
                 'AdminCreateUserConfig' => [
                     'AllowAdminCreateUserOnly' => true,
                 ],
@@ -45,8 +41,14 @@ class CognitoController extends Controller
                         'AttributeDataType' => 'String',
                         'Mutable' => true,
                         'Name' => 'store_name',
-                        'Required' => true,
+                        'Required' => false,
                     ],
+                    [
+                        "AttributeDataType" => "String",
+                        "Mutable" => false,
+                        "Name" => "email",
+                        "Required" => true,
+                    ]
                 ],
                 "UsernameConfiguration" => [
                     "CaseSensitive" => false
@@ -60,11 +62,10 @@ class CognitoController extends Controller
                 'ClientName' => 'client-' . $storeId . '-' . $storeName,
                 'UserPoolId' => $userPoolId,
                 'ExplicitAuthFlows' => [
-                    'ALLOW_REFRESH_TOKEN_AUTH',
                     'ALLOW_ADMIN_USER_PASSWORD_AUTH',
                     'ALLOW_CUSTOM_AUTH',
+                    'ALLOW_USER_SRP_AUTH',
                     'ALLOW_REFRESH_TOKEN_AUTH',
-                    'ALLOW_USER_SRP_AUTH'
                 ],
                 'GenerateSecret' => false,
                 'RefreshTokenValidity' => 30,
@@ -77,7 +78,6 @@ class CognitoController extends Controller
                 'poolId' => $userPoolId,
                 'clientId' => $clientId
             ]);
-
         } catch (CognitoIdentityProviderException $exception) {
             return $this->output('Pool create request failed.', $exception->getMessage(), ResponseAlias::HTTP_INTERNAL_SERVER_ERROR);
         }
@@ -124,7 +124,7 @@ class CognitoController extends Controller
 
         $cognitoResponse = $this->cognitoService->processCognitoAdminCreateUser($request);
         if (!$cognitoResponse instanceof Result) {
-            return $this->output('Could not proceed with register.', $cognitoResponse, ResponseAlias::HTTP_INTERNAL_SERVER_ERROR);
+            return $this->output('Could not proceed with register.', $cognitoResponse->getMessage(), ResponseAlias::HTTP_INTERNAL_SERVER_ERROR);
         }
 
         $cognitoSubIndex = array_search("sub", array_column($cognitoResponse->get('User')["Attributes"], "Name"));
@@ -192,8 +192,6 @@ class CognitoController extends Controller
         $cognito_session = $request->cognito_session ?? null;
 
         $awsClientId = $request->headers->get('aws_client_id');
-        $awsAccessKey = $request->headers->get('aws_access_key');
-        $awsSecretAccessKey = $request->headers->get('aws_secret_access_key');
 
         if (empty($email) || empty($password) || empty($cognito_session)) {
             return $this->output('Invalid request data.', [], ResponseAlias::HTTP_BAD_REQUEST);
@@ -209,7 +207,7 @@ class CognitoController extends Controller
             'Session' => $cognito_session
         ];
 
-        $res = $this->cognitoService->processCognitoForcePasswordChange($awsAccessKey, $awsSecretAccessKey, $params);
+        $res = $this->cognitoService->processCognitoForcePasswordChange($params);
 
         if ($res instanceof CognitoIdentityProviderException) {
             return $this->output('Force password change process failed.', $res->getMessage(), ResponseAlias::HTTP_INTERNAL_SERVER_ERROR);
