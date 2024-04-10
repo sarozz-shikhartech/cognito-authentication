@@ -14,6 +14,7 @@ class CognitoController extends Controller
     /**
      * @param Request $request
      * @return JsonResponse
+     *
      */
     public function createPool(Request $request): JsonResponse
     {
@@ -27,25 +28,31 @@ class CognitoController extends Controller
         try {
             $client = $this->cognitoService->connectCognito();
             $result = $client->createUserPool([
-                'PoolName' => 'pool-'. $storeId . '-' . $storeName,
+                //name of the pool i.e. pool-1-testStore-1123456
+                'PoolName' => 'pool-'. $storeId . '-' . $storeName . '-' . time(),
+                //configuration for admin of this pool
                 'AdminCreateUserConfig' => [
+                    //if true then only the admin is allowed to create user profiles. set to false if users can sign themselves up via an app
                     'AllowAdminCreateUserOnly' => true,
                 ],
+                //policies associated with the new user pool
                 'Policies' => [
+                    //rules for users password requirement
                     'PasswordPolicy' => [
-                        'MinimumLength' => 8,
+                        'MinimumLength' => 8, //required least minimum of 8 words in password
                     ],
                 ],
+                //array of schema attributes for the new user pool. moreover like columns in database table
                 'Schema' => [
                     [
-                        'AttributeDataType' => 'String',
-                        'Mutable' => true,
-                        'Name' => 'store_name',
-                        'Required' => false,
+                        'AttributeDataType' => 'String', //datatype that the field will hold
+                        'Mutable' => true, //is it editable
+                        'Name' => 'store_name',//field name
+                        'Required' => false, //nullable or not
                     ],
                     [
                         "AttributeDataType" => "String",
-                        "Mutable" => false,
+                        "Mutable" => false, //false which means it cannot be updated once set
                         "Name" => "email",
                         "Required" => true,
                     ]
@@ -53,22 +60,27 @@ class CognitoController extends Controller
                 "UsernameConfiguration" => [
                     "CaseSensitive" => false
                 ],
+                //Specifies whether a user can use an email address or phone number as a username when they sign up.
                 "UsernameAttributes" => ["email"],
             ]);
 
             $userPoolId = $result['UserPool']['Id'];
 
             $result = $client->createUserPoolClient([
-                'ClientName' => 'client-' . $storeId . '-' . $storeName,
+                //name of the client
+                'ClientName' => 'client-' . $storeId . '-' . $storeName . '-' . time(),
                 'UserPoolId' => $userPoolId,
+                //desired authentication flows that user pool client to support.
                 'ExplicitAuthFlows' => [
-                    'ALLOW_ADMIN_USER_PASSWORD_AUTH',
-                    'ALLOW_CUSTOM_AUTH',
-                    'ALLOW_USER_SRP_AUTH',
-                    'ALLOW_REFRESH_TOKEN_AUTH',
+                    'ALLOW_ADMIN_USER_PASSWORD_AUTH', //Enable admin based user password authentication flow
+                    'ALLOW_CUSTOM_AUTH', //Enable Lambda trigger based authentication.
+                    'ALLOW_USER_SRP_AUTH', //Enable SRP-based authentication.
+                    'ALLOW_REFRESH_TOKEN_AUTH', //Enable auth-flow to refresh tokens.
                 ],
+                //config to specify whether you want to generate a secret for the user pool client being created.
                 'GenerateSecret' => false,
                 'RefreshTokenValidity' => 30,
+                //if ENABLED and user doesn't exist, then authentication returns an error indicating either the username or password was incorrect. else in LEGACY, returns a UserNotFoundException exception
                 'PreventUserExistenceErrors' => 'ENABLED'
             ]);
 
@@ -101,7 +113,7 @@ class CognitoController extends Controller
         }
 
         if (array_key_exists('cognito_session', $response)) {
-            return $this->output('Temporary Password Change Required.', $response, ResponseAlias::HTTP_OK);
+            return $this->output('Temporary Password Change Required.', $response, ResponseAlias::HTTP_ACCEPTED);
         }
 
         return $this->output('Authenticated.', $response);
