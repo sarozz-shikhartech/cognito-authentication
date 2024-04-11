@@ -36,6 +36,9 @@ class CognitoService extends MainService
 
             $client = $this->connectCognito();
 
+            /*
+             * https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_AdminInitiateAuth.html
+             */
             $response = $client->adminInitiateAuth([
                 'AuthFlow' => 'ADMIN_NO_SRP_AUTH',
                 'AuthParameters' => [
@@ -78,6 +81,9 @@ class CognitoService extends MainService
 
             $client = $this->connectCognito();
 
+            /*
+             * https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_AdminCreateUser.html
+             */
             return $client->adminCreateUser([
                 "DesiredDeliveryMediums" => ["EMAIL"],
                 "TemporaryPassword" => Str::password(12),
@@ -113,11 +119,18 @@ class CognitoService extends MainService
                 'ClientId' => '',
                 'UserPoolId' => '',
             ];
+
+            /*
+             * https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_AdminInitiateAuth.html
+             */
             $response = $client->adminInitiateAuth($payload);
 
             // Extract tokens from callback request
             $accessToken = $response->toArray()['AuthenticationResult']['AccessToken'];
 
+            /*
+             * https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_ChangePassword.html
+             */
             $response = $client->changePassword([
                 'AccessToken' => $accessToken,
                 'PreviousPassword' => $currentPassword,
@@ -138,11 +151,14 @@ class CognitoService extends MainService
             $awsClientId = $headers->get('aws_client_id');
 
             $client = $this->connectCognito();
+
+            /*
+             * https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_ForgotPassword.html
+             */
             $params = [
                 "ClientId" => $awsClientId,
                 "Username" => $request->email,
             ];
-
             $client->forgotPassword($params);
 
             return true;
@@ -156,6 +172,9 @@ class CognitoService extends MainService
         try {
             $client = $this->connectCognito();
 
+            /*
+             * https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_RespondToAuthChallenge.html
+             */
             $response = $client->respondToAuthChallenge($params);
             $response = $response->toArray();
 
@@ -181,13 +200,15 @@ class CognitoService extends MainService
 
             $client = $this->connectCognito();
 
+            /*
+             * https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_ConfirmForgotPassword.html
+             */
             $params = [
                 'ClientId' => $awsClientId,
                 'Username' => $request->email,
                 'Password' => $request->password,
                 'ConfirmationCode' => $request->code
             ];
-
             $client->confirmForgotPassword($params);
             return $client;
         } catch (CognitoIdentityProviderException $exception) {

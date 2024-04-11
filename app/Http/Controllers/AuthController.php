@@ -7,21 +7,24 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response as ResponseAlias;
 
 class AuthController extends Controller
 {
+    /**
+     * @throws ValidationException
+     */
     public function userLogin(Request $request): JsonResponse
     {
         $data = json_decode($request->getContent());
 
-        $email = $data->email ?? null;
-        $password = $data->password ?? null;
-        if (empty($email) || empty($password)) {
-            return $this->output('Email and password is required.', []);
-        }
+        $this->validate($request, [
+            'email' => 'required',
+            'password' => 'required'
+        ]);
 
-        $user = User::where('email', '=', $email)->first();
+        $user = User::where('email', '=', $data->email)->first();
         if (!$user) {
             return $this->output('User not found', [], ResponseAlias::HTTP_UNAUTHORIZED);
         }
@@ -39,16 +42,22 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * @throws ValidationException
+     */
     public function userRegister(Request $request): JsonResponse
     {
         $data = json_decode($request->getContent());
 
-        $name = $data->name ?? null;
-        $email = $data->email ?? null;
-        $password = $data->password ?? null;
-        if (empty($email) || empty($password) || empty($name)) {
-            return $this->output('Email, Name and Password is required.', []);
-        }
+        $this->validate($request, [
+            'name' => 'required',
+            'email' => 'required|email|unique:users',
+            'password' => 'required'
+        ]);
+
+        $name = $data->name;
+        $email = $data->email;
+        $password = $data->password;
 
         try {
             $newUser = User::create([

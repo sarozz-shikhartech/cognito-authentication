@@ -6,6 +6,7 @@ use Aws\CognitoIdentityProvider\Exception\CognitoIdentityProviderException;
 use Aws\Result;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response as ResponseAlias;
 
 class CognitoController extends Controller
@@ -15,16 +16,21 @@ class CognitoController extends Controller
      * @param Request $request
      * @return JsonResponse
      *
+     * @throws ValidationException
      */
     public function createPool(Request $request): JsonResponse
     {
-        $storeName = $request->get('storeName', null);
-        $storeId = $request->get('storeId', null);
+        $this->validate($request, [
+            'storeName' => 'required',
+            'storeId'   => 'required|int'
+        ]);
 
-        if (empty($storeName) || empty($storeId)) {
-            return $this->output('Invalid request data.', [], ResponseAlias::HTTP_BAD_REQUEST);
-        }
+        $storeName = $request->get('storeName');
+        $storeId = $request->get('storeId');
 
+        /*
+         * https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_CreateUserPool.html
+         */
         try {
             $client = $this->cognitoService->connectCognito();
             $result = $client->createUserPool([
@@ -66,6 +72,9 @@ class CognitoController extends Controller
 
             $userPoolId = $result['UserPool']['Id'];
 
+            /*
+             * https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_CreateUserPoolClient.html
+             */
             $result = $client->createUserPoolClient([
                 //name of the client
                 'ClientName' => 'client-' . $storeId . '-' . $storeName . '-' . time(),
@@ -98,11 +107,17 @@ class CognitoController extends Controller
     /**
      * @param Request $request
      * @return JsonResponse|\Exception|array
+     * @throws ValidationException
      */
     public function login(Request $request): JsonResponse|\Exception|array
     {
-        $email = $request->email ?? null;
-        $password = $request->password ?? null;
+        $this->validate($request, [
+            'email' => 'required',
+            'password'   => 'required'
+        ]);
+
+        $email = $request->email;
+        $password = $request->password;
         if (empty($email) || empty($password)) {
             return $this->output('Email or Password is invalid.', [], ResponseAlias::HTTP_BAD_REQUEST);
         }
