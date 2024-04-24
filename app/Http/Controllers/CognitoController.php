@@ -6,6 +6,7 @@ use Aws\CognitoIdentityProvider\Exception\CognitoIdentityProviderException;
 use Aws\Result;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response as ResponseAlias;
 
 class CognitoController extends Controller
@@ -14,60 +15,81 @@ class CognitoController extends Controller
     /**
      * @param Request $request
      * @return JsonResponse
+     *
+     * @throws ValidationException
      */
     public function createPool(Request $request): JsonResponse
     {
-        $storeName = $request->get('storeName', null);
-        $storeId = $request->get('storeId', null);
+        $this->validate($request, [
+            'storeName' => 'required',
+            'storeId'   => 'required|int'
+        ]);
 
-        $headers = $request->headers;
-        $awsAccessKey = $headers->get('aws_access_key');
-        $awsSecretAccessKey = $headers->get('aws_secret_access_key');
-        if (empty($storeName) || empty($storeId)) {
-            return $this->output('Invalid request data.', [], ResponseAlias::HTTP_BAD_REQUEST);
-        }
+        $storeName = $request->get('storeName');
+        $storeId = $request->get('storeId');
 
-        $client = $this->cognitoService->connectCognito($awsAccessKey, $awsSecretAccessKey);
-
+        /*
+         * https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_CreateUserPool.html
+         */
         try {
+            $client = $this->cognitoService->connectCognito();
             $result = $client->createUserPool([
-                'PoolName' => $storeName . '_' . $storeId,
+                //name of the pool i.e. pool-1-testStore-1123456
+                'PoolName' => 'pool-'. $storeId . '-' . $storeName . '-' . time(),
+                //configuration for admin of this pool
                 'AdminCreateUserConfig' => [
+                    //if true then only the admin is allowed to create user profiles. set to false if users can sign themselves up via an app
                     'AllowAdminCreateUserOnly' => true,
                 ],
+                //policies associated with the new user pool
                 'Policies' => [
+                    //rules for users password requirement
                     'PasswordPolicy' => [
-                        'MinimumLength' => 8,
+                        'MinimumLength' => 8, //required least minimum of 8 words in password
                     ],
                 ],
+                //array of schema attributes for the new user pool. moreover like columns in database table
                 'Schema' => [
                     [
-                        'AttributeDataType' => 'String',
-                        'Mutable' => true,
-                        'Name' => 'store_name',
-                        'Required' => true,
+                        'AttributeDataType' => 'String', //datatype that the field will hold
+                        'Mutable' => true, //is it editable
+                        'Name' => 'store_name',//field name
+                        'Required' => false, //nullable or not
                     ],
+                    [
+                        "AttributeDataType" => "String",
+                        "Mutable" => false, //false which means it cannot be updated once set
+                        "Name" => "email",
+                        "Required" => true,
+                    ]
                 ],
                 "UsernameConfiguration" => [
                     "CaseSensitive" => false
                 ],
+                //Specifies whether a user can use an email address or phone number as a username when they sign up.
                 "UsernameAttributes" => ["email"],
             ]);
 
             $userPoolId = $result['UserPool']['Id'];
 
+            /*
+             * https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_CreateUserPoolClient.html
+             */
             $result = $client->createUserPoolClient([
-                'ClientName' => 'client-' . $storeId . '-' . $storeName,
+                //name of the client
+                'ClientName' => 'client-' . $storeId . '-' . $storeName . '-' . time(),
                 'UserPoolId' => $userPoolId,
+                //desired authentication flows that user pool client to support.
                 'ExplicitAuthFlows' => [
-                    'ALLOW_REFRESH_TOKEN_AUTH',
-                    'ALLOW_ADMIN_USER_PASSWORD_AUTH',
-                    'ALLOW_CUSTOM_AUTH',
-                    'ALLOW_REFRESH_TOKEN_AUTH',
-                    'ALLOW_USER_SRP_AUTH'
+                    'ALLOW_ADMIN_USER_PASSWORD_AUTH', //Enable admin based user password authentication flow
+                    'ALLOW_CUSTOM_AUTH', //Enable Lambda trigger based authentication.
+                    'ALLOW_USER_SRP_AUTH', //Enable SRP-based authentication.
+                    'ALLOW_REFRESH_TOKEN_AUTH', //Enable auth-flow to refresh tokens.
                 ],
+                //config to specify whether you want to generate a secret for the user pool client being created.
                 'GenerateSecret' => false,
                 'RefreshTokenValidity' => 30,
+                //if ENABLED and user doesn't exist, then authentication returns an error indicating either the username or password was incorrect. else in LEGACY, returns a UserNotFoundException exception
                 'PreventUserExistenceErrors' => 'ENABLED'
             ]);
 
@@ -77,7 +99,6 @@ class CognitoController extends Controller
                 'poolId' => $userPoolId,
                 'clientId' => $clientId
             ]);
-
         } catch (CognitoIdentityProviderException $exception) {
             return $this->output('Pool create request failed.', $exception->getMessage(), ResponseAlias::HTTP_INTERNAL_SERVER_ERROR);
         }
@@ -86,11 +107,17 @@ class CognitoController extends Controller
     /**
      * @param Request $request
      * @return JsonResponse|\Exception|array
+     * @throws ValidationException
      */
     public function login(Request $request): JsonResponse|\Exception|array
     {
-        $email = $request->email ?? null;
-        $password = $request->password ?? null;
+        $this->validate($request, [
+            'email' => 'required',
+            'password'   => 'required'
+        ]);
+
+        $email = $request->email;
+        $password = $request->password;
         if (empty($email) || empty($password)) {
             return $this->output('Email or Password is invalid.', [], ResponseAlias::HTTP_BAD_REQUEST);
         }
@@ -101,7 +128,7 @@ class CognitoController extends Controller
         }
 
         if (array_key_exists('cognito_session', $response)) {
-            return $this->output('Temporary Password Change Required.', $response, ResponseAlias::HTTP_OK);
+            return $this->output('Temporary Password Change Required.', $response, ResponseAlias::HTTP_ACCEPTED);
         }
 
         return $this->output('Authenticated.', $response);
@@ -124,7 +151,7 @@ class CognitoController extends Controller
 
         $cognitoResponse = $this->cognitoService->processCognitoAdminCreateUser($request);
         if (!$cognitoResponse instanceof Result) {
-            return $this->output('Could not proceed with register.', $cognitoResponse, ResponseAlias::HTTP_INTERNAL_SERVER_ERROR);
+            return $this->output('Could not proceed with register.', $cognitoResponse->getMessage(), ResponseAlias::HTTP_INTERNAL_SERVER_ERROR);
         }
 
         $cognitoSubIndex = array_search("sub", array_column($cognitoResponse->get('User')["Attributes"], "Name"));
@@ -192,8 +219,6 @@ class CognitoController extends Controller
         $cognito_session = $request->cognito_session ?? null;
 
         $awsClientId = $request->headers->get('aws_client_id');
-        $awsAccessKey = $request->headers->get('aws_access_key');
-        $awsSecretAccessKey = $request->headers->get('aws_secret_access_key');
 
         if (empty($email) || empty($password) || empty($cognito_session)) {
             return $this->output('Invalid request data.', [], ResponseAlias::HTTP_BAD_REQUEST);
@@ -209,7 +234,7 @@ class CognitoController extends Controller
             'Session' => $cognito_session
         ];
 
-        $res = $this->cognitoService->processCognitoForcePasswordChange($awsAccessKey, $awsSecretAccessKey, $params);
+        $res = $this->cognitoService->processCognitoForcePasswordChange($params);
 
         if ($res instanceof CognitoIdentityProviderException) {
             return $this->output('Force password change process failed.', $res->getMessage(), ResponseAlias::HTTP_INTERNAL_SERVER_ERROR);

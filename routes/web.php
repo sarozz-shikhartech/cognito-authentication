@@ -15,12 +15,17 @@
 
 use Laravel\Lumen\Routing\Router;
 
-$router->post('/user-pool/create', 'CognitoController@createPool');
-$router->post('/create', 'CognitoController@register');
-$router->post('/login', 'CognitoController@login');
-$router->post('/force-password-change', 'CognitoController@forcePasswordChange');
-$router->post('/forgot-password', 'CognitoController@forgetPassword');
-$router->post('/reset-password', 'CognitoController@resetPassword');
+$router->post('/app/login', 'AuthController@userLogin');
+$router->post('/app/register', 'AuthController@userRegister');
+
+$router->group(['middleware' => 'auth'], function () use ($router) {
+    $router->post('/cognito/create', 'CognitoController@createPool');
+    $router->post('/cognito-user/create', 'CognitoController@register');
+    $router->post('/cognito-user/login', 'CognitoController@login');
+    $router->post('/cognito-user/force-password-change', 'CognitoController@forcePasswordChange');
+    $router->post('/cognito-user/forgot-password', 'CognitoController@forgetPassword');
+    $router->post('/cognito-user/reset-password', 'CognitoController@resetPassword');
+});
 
 $router->get('/', function () use ($router) {
     return $router->app->version();
